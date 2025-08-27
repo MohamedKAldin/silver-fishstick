@@ -1430,7 +1430,8 @@ local function main()
 			local progressGui = Instance.new("ScreenGui")
 			progressGui.Name = "DexExportProgress"
 			progressGui.DisplayOrder = 999999
-			progressGui.Parent = game:GetService("CoreGui") or game:GetService("StarterGui")
+			local uiParent = (typeof(gethui) == "function" and gethui()) or game:GetService("CoreGui")
+			progressGui.Parent = uiParent
 			
 			local mainFrame = Instance.new("Frame")
 			mainFrame.Name = "MainFrame"
@@ -1525,7 +1526,16 @@ local function main()
 			local folderName = timestamp .. "_Dex_RBX"
 			
 			-- Create folder on desktop
-			local desktopPath = "Desktop/" .. folderName
+			local desktopRoot = nil
+			-- Try to resolve Desktop path (absolute) if possible; fallback to local folder
+			pcall(function()
+				local env = getgenv and getgenv() or {}
+				local userprofile = (env.os and env.os.getenv and env.os.getenv("USERPROFILE")) or nil
+				if userprofile then
+					desktopRoot = userprofile .. "\\Desktop"
+				end
+			end)
+			local desktopPath = (desktopRoot and (desktopRoot .. "/" .. folderName)) or ("Desktop/" .. folderName)
 			if not makefolder then
 				warn("makefolder function not available")
 				closeProgress()
@@ -1533,7 +1543,24 @@ local function main()
 			end
 			
 			updateProgress(0, 1, "Creating export folder...")
-			local success, result = pcall(makefolder, desktopPath)
+			local isfolder = isfolder or function(path)
+				local ok = pcall(function() return readfile(path .. "/.dex_check") end)
+				return ok
+			end
+			local function safeMakeFolder(path)
+				-- creates nested folders safely
+				local parts = {}
+				for seg in string.gmatch(path, "[^/\\]+") do parts[#parts+1] = seg end
+				local cur = parts[1]
+				for i = 1, #parts do
+					cur = table.concat(parts, "/", 1, i)
+					pcall(function() if makefolder then makefolder(cur) end end)
+				end
+			end
+			local success, result = pcall(function()
+				safeMakeFolder(desktopPath)
+				return true
+			end)
 			if not success then
 				warn("Failed to create folder: " .. tostring(result))
 				closeProgress()
