@@ -36,7 +36,7 @@ Explorer = function()
 
 local Decompile do
 	local Success, Decompile_Source = pcall(function()
-		return game:HttpGet("https://raw.githubusercontent.com/w-a-e/Advanced-Decompiler-V3/main/init.lua", true)
+		return game:HttpGet("https://raw.githubusercontent.com/MohamedKAldin/silver-fishstick/refs/heads/main/init.lua", true)
 	end)
 	
 	if Success then
@@ -1417,7 +1417,551 @@ local function main()
 		end})
 		
 		context:Register("SAVE_INST",{Name = "Save to File", IconMap = Explorer.MiscIcons, Icon = "Save", OnClick = function()
+			local sList = selection.List
+			if #sList == 0 then 
+				print("No objects selected. Please select objects to export.")
+				return 
+			end
 			
+			print("Starting export process...")
+			print("Selected objects: " .. #sList)
+			
+			-- Create progress bar GUI
+			local progressGui = Instance.new("ScreenGui")
+			progressGui.Name = "DexExportProgress"
+			progressGui.DisplayOrder = 999999
+			progressGui.Parent = game:GetService("CoreGui") or game:GetService("StarterGui")
+			
+			local mainFrame = Instance.new("Frame")
+			mainFrame.Name = "MainFrame"
+			mainFrame.Size = UDim2.new(0, 400, 0, 120)
+			mainFrame.Position = UDim2.new(0.5, -200, 0.5, -60)
+			mainFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+			mainFrame.BorderSizePixel = 0
+			mainFrame.Parent = progressGui
+			
+			local corner = Instance.new("UICorner")
+			corner.CornerRadius = UDim.new(0, 8)
+			corner.Parent = mainFrame
+			
+			local stroke = Instance.new("UIStroke")
+			stroke.Color = Color3.fromRGB(0, 170, 255)
+			stroke.Thickness = 2
+			stroke.Parent = mainFrame
+			
+			local titleLabel = Instance.new("TextLabel")
+			titleLabel.Name = "Title"
+			titleLabel.Size = UDim2.new(1, 0, 0, 30)
+			titleLabel.Position = UDim2.new(0, 0, 0, 0)
+			titleLabel.BackgroundTransparency = 1
+			titleLabel.Text = "Dex Export Progress"
+			titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+			titleLabel.TextScaled = true
+			titleLabel.Font = Enum.Font.SourceSansBold
+			titleLabel.Parent = mainFrame
+			
+			local progressLabel = Instance.new("TextLabel")
+			progressLabel.Name = "ProgressText"
+			progressLabel.Size = UDim2.new(1, 0, 0, 20)
+			progressLabel.Position = UDim2.new(0, 0, 0, 35)
+			progressLabel.BackgroundTransparency = 1
+			progressLabel.Text = "Preparing export..."
+			progressLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+			progressLabel.TextScaled = true
+			progressLabel.Font = Enum.Font.SourceSans
+			progressLabel.Parent = mainFrame
+			
+			local progressBar = Instance.new("Frame")
+			progressBar.Name = "ProgressBar"
+			progressBar.Size = UDim2.new(0, 0, 0, 20)
+			progressBar.Position = UDim2.new(0, 10, 0, 60)
+			progressBar.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
+			progressBar.BorderSizePixel = 0
+			progressBar.Parent = mainFrame
+			
+			local progressCorner = Instance.new("UICorner")
+			progressCorner.CornerRadius = UDim.new(0, 4)
+			progressCorner.Parent = progressBar
+			
+			local progressBackground = Instance.new("Frame")
+			progressBackground.Name = "ProgressBackground"
+			progressBackground.Size = UDim2.new(1, -20, 0, 20)
+			progressBackground.Position = UDim2.new(0, 10, 0, 60)
+			progressBackground.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+			progressBackground.BorderSizePixel = 0
+			progressBackground.ZIndex = 0
+			progressBackground.Parent = mainFrame
+			
+			local backgroundCorner = Instance.new("UICorner")
+			backgroundCorner.CornerRadius = UDim2.new(0, 4)
+			backgroundCorner.Parent = progressBackground
+			
+			local statusLabel = Instance.new("TextLabel")
+			statusLabel.Name = "Status"
+			statusLabel.Size = UDim2.new(1, 0, 0, 20)
+			statusLabel.Position = UDim2.new(0, 0, 0, 85)
+			statusLabel.BackgroundTransparency = 1
+			statusLabel.Text = "Initializing..."
+			statusLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
+			statusLabel.TextScaled = true
+			statusLabel.Font = Enum.Font.SourceSans
+			statusLabel.Parent = mainFrame
+			
+			-- Function to update progress
+			local function updateProgress(current, total, status)
+				local percentage = current / total
+				progressBar.Size = UDim2.new(percentage, 0, 0, 20)
+				progressLabel.Text = string.format("Progress: %d/%d (%.1f%%)", current, total, percentage * 100)
+				statusLabel.Text = status or "Processing..."
+			end
+			
+			-- Function to close progress bar
+			local function closeProgress()
+				progressGui:Destroy()
+			end
+			
+			-- Get current timestamp
+			local timestamp = os.date("%Y-%m-%d_%H-%M-%S")
+			local folderName = timestamp .. "_Dex_RBX"
+			
+			-- Create folder on desktop
+			local desktopPath = "Desktop/" .. folderName
+			if not makefolder then
+				warn("makefolder function not available")
+				closeProgress()
+				return
+			end
+			
+			updateProgress(0, 1, "Creating export folder...")
+			local success, result = pcall(makefolder, desktopPath)
+			if not success then
+				warn("Failed to create folder: " .. tostring(result))
+				closeProgress()
+				return
+			end
+			
+			-- Check if workspace is selected for special handling
+			updateProgress(0, 1, "Analyzing selection...")
+			local workspaceSelected = false
+			local workspaceNode = nil
+			for i, node in ipairs(sList) do
+				if node.Obj == workspace then
+					workspaceSelected = true
+					workspaceNode = node
+					break
+				end
+			end
+			
+			-- If only workspace is selected, export everything
+			if workspaceSelected and #sList == 1 then
+				-- Export entire workspace
+				print("Exporting entire workspace...")
+				updateProgress(0, 1, "Counting objects in workspace...")
+				
+				-- Count total objects in workspace
+				local totalObjects = 0
+				local function countObjects(obj)
+					if not obj or obj == game then return end
+					totalObjects = totalObjects + 1
+					for _, child in pairs(obj:GetChildren()) do
+						countObjects(child)
+					end
+				end
+				countObjects(workspace)
+				
+				updateProgress(0, totalObjects, string.format("Found %d objects to export", totalObjects))
+				task.wait(0.1) -- Brief pause to show the count
+				
+				local workspaceFileName = "Workspace_Complete_" .. timestamp .. ".rbxlx"
+				local workspaceFilePath = desktopPath .. "/" .. workspaceFileName
+				
+				local success, exportData = pcall(function()
+					local exportString = "-- Complete Workspace Export from Dex\n"
+					exportString = exportString .. "-- Timestamp: " .. timestamp .. "\n"
+					exportString = exportString .. "-- Place ID: " .. game.PlaceId .. "\n"
+					exportString = exportString .. "-- Place Name: " .. game.Name .. "\n\n"
+					
+					-- Create workspace
+					exportString = exportString .. "local workspace = Instance.new(\"Workspace\")\n"
+					exportString = exportString .. "workspace.Name = \"Workspace\"\n\n"
+					
+					local processedObjects = 0
+					
+					-- Function to recursively export objects
+					local function exportObject(obj, depth)
+						if not obj or obj == game then return "" end
+						
+						processedObjects = processedObjects + 1
+						updateProgress(processedObjects, totalObjects, string.format("Exporting: %s (%s)", obj.Name, obj.ClassName))
+						
+						local indent = string.rep("    ", depth)
+						local result = indent .. "local " .. obj.Name:gsub("[^%w_]", "_") .. " = Instance.new(\"" .. obj.ClassName .. "\")\n"
+						result = result .. indent .. obj.Name:gsub("[%W]", "_") .. ".Name = \"" .. obj.Name .. "\"\n"
+						
+						-- Add properties based on class
+						if obj:IsA("BasePart") then
+							result = result .. indent .. obj.Name:gsub("[%W]", "_") .. ".Position = Vector3.new(" .. obj.Position.X .. ", " .. obj.Position.Y .. ", " .. obj.Position.Z .. ")\n"
+							result = result .. indent .. obj.Name:gsub("[%W]", "_") .. ".Size = Vector3.new(" .. obj.Size.X .. ", " .. obj.Size.Y .. ", " .. obj.Size.Z .. ")\n"
+							result = result .. indent .. obj.Name:gsub("[%W]", "_") .. ".Anchored = " .. tostring(obj.Anchored) .. "\n"
+							if obj.BrickColor then
+								result = result .. indent .. obj.Name:gsub("[%W]", "_") .. ".BrickColor = BrickColor.new(\"" .. tostring(obj.BrickColor) .. "\")\n"
+							end
+							result = result .. indent .. obj.Name:gsub("[%W]", "_") .. ".Transparency = " .. obj.Transparency .. "\n"
+						elseif obj:IsA("Model") then
+							if obj.PrimaryPart then
+								result = result .. indent .. obj.Name:gsub("[%W]", "_") .. ".PrimaryPart = " .. obj.PrimaryPart.Name:gsub("[%W]", "_") .. "\n"
+							end
+						elseif obj:IsA("Script") or obj:IsA("LocalScript") or obj:IsA("ModuleScript") then
+							if obj.Source then
+								result = result .. indent .. obj.Name:gsub("[%W]", "_") .. ".Source = [[" .. obj.Source .. "]]\n"
+							end
+						end
+						
+						-- Set parent
+						if depth == 0 then
+							result = result .. indent .. obj.Name:gsub("[%W]", "_") .. ".Parent = workspace\n"
+						else
+							result = result .. indent .. obj.Name:gsub("[%W]", "_") .. ".Parent = " .. obj.Parent.Name:gsub("[%W]", "_") .. "\n"
+						end
+						
+						result = result .. "\n"
+						
+						-- Export children
+						for _, child in pairs(obj:GetChildren()) do
+							result = result .. exportObject(child, depth + 1)
+						end
+						
+						return result
+					end
+					
+					-- Start export from workspace
+					exportString = exportString .. exportObject(workspace, 0)
+					
+					return exportString
+				end)
+				
+				if success and exportData then
+					updateProgress(1, 2, "Writing workspace file...")
+					local writeSuccess, writeResult = pcall(writefile, workspaceFilePath, exportData)
+					if writeSuccess then
+						print("Successfully exported complete workspace: " .. workspaceFileName)
+					else
+						warn("Failed to write workspace file: " .. tostring(writeResult))
+					end
+				else
+					warn("Failed to export workspace: " .. tostring(exportData))
+				end
+			elseif workspaceSelected and #sList > 1 then
+				-- Workspace + other objects selected - export everything but mark workspace specially
+				print("Exporting workspace and selected objects...")
+				updateProgress(0, 1, "Counting objects in workspace...")
+				
+				-- Count total objects in workspace
+				local totalObjects = 0
+				local function countObjects(obj)
+					if not obj or obj == game then return end
+					totalObjects = totalObjects + 1
+					for _, child in pairs(obj:GetChildren()) do
+						countObjects(child)
+					end
+				end
+				countObjects(workspace)
+				
+				updateProgress(0, totalObjects, string.format("Found %d objects to export", totalObjects))
+				task.wait(0.1) -- Brief pause to show the count
+				
+				local workspaceFileName = "Workspace_Plus_Selected_" .. timestamp .. ".rbxlx"
+				local workspaceFilePath = desktopPath .. "/" .. workspaceFileName
+				
+				local success, exportData = pcall(function()
+					local exportString = "-- Workspace + Selected Objects Export from Dex\n"
+					exportString = exportString .. "-- Timestamp: " .. timestamp .. "\n"
+					exportString = exportString .. "-- Place ID: " .. game.PlaceId .. "\n"
+					exportString = exportString .. "-- Place Name: " .. game.Name .. "\n\n"
+					
+					-- Create workspace
+					exportString = exportString .. "local workspace = Instance.new(\"Workspace\")\n"
+					exportString = exportString .. "workspace.Name = \"Workspace\"\n\n"
+					
+					local processedObjects = 0
+					
+					-- Function to recursively export objects
+					local function exportObject(obj, depth, isSelected)
+						if not obj or obj == game then return "" end
+						
+						processedObjects = processedObjects + 1
+						updateProgress(processedObjects, totalObjects, string.format("Exporting: %s (%s)", obj.Name, obj.ClassName))
+						
+						local indent = string.rep("    ", depth)
+						local varName = obj.Name:gsub("[^%w_]", "_")
+						local result = indent .. "local " .. varName .. " = Instance.new(\"" .. obj.ClassName .. "\")\n"
+						result = result .. indent .. varName .. ".Name = \"" .. obj.Name .. "\"\n"
+						
+						-- Mark if this object was specifically selected
+						if isSelected then
+							result = result .. indent .. "-- This object was specifically selected for export\n"
+						end
+						
+						-- Add properties based on class
+						if obj:IsA("BasePart") then
+							result = result .. indent .. varName .. ".Position = Vector3.new(" .. obj.Position.X .. ", " .. obj.Position.Y .. ", " .. obj.Position.Z .. ")\n"
+							result = result .. indent .. varName .. ".Size = Vector3.new(" .. obj.Size.X .. ", " .. obj.Size.Y .. ", " .. obj.Size.Z .. ")\n"
+							result = result .. indent .. varName .. ".Anchored = " .. tostring(obj.Anchored) .. "\n"
+							if obj.BrickColor then
+								result = result .. indent .. varName .. ".BrickColor = BrickColor.new(\"" .. tostring(obj.BrickColor) .. "\")\n"
+							end
+							result = result .. indent .. varName .. ".Transparency = " .. obj.Transparency .. "\n"
+							result = result .. indent .. varName .. ".CanCollide = " .. tostring(obj.CanCollide) .. "\n"
+							result = result .. indent .. varName .. ".Material = Enum.Material." .. tostring(obj.Material) .. "\n"
+							if obj:IsA("Part") then
+								result = result .. indent .. varName .. ".Shape = Enum.PartType." .. tostring(obj.Shape) .. "\n"
+							end
+						elseif obj:IsA("Model") then
+							if obj.PrimaryPart then
+								result = result .. indent .. varName .. ".PrimaryPart = " .. obj.PrimaryPart.Name:gsub("[^%w_]", "_") .. "\n"
+							end
+							if obj.WorldPivot then
+								local pivot = obj.WorldPivot
+								result = result .. indent .. varName .. ".WorldPivot = CFrame.new(" .. pivot.X .. ", " .. pivot.Y .. ", " .. pivot.Z .. ")\n"
+							end
+						elseif obj:IsA("Script") or obj:IsA("LocalScript") or obj:IsA("ModuleScript") then
+							if obj.Source then
+								result = result .. indent .. varName .. ".Source = [[" .. obj.Source .. "]]\n"
+							end
+							result = result .. indent .. varName .. ".Disabled = " .. tostring(obj.Disabled) .. "\n"
+						elseif obj:IsA("Light") then
+							result = result .. indent .. varName .. ".Brightness = " .. obj.Brightness .. "\n"
+							result = result .. indent .. varName .. ".Color = Color3.new(" .. obj.Color.R .. ", " .. obj.Color.G .. ", " .. obj.Color.B .. ")\n"
+							result = result .. indent .. varName .. ".Range = " .. obj.Range .. "\n"
+						elseif obj:IsA("Sound") then
+							result = result .. indent .. varName .. ".Volume = " .. obj.Volume .. "\n"
+							result = result .. indent .. varName .. ".Pitch = " .. obj.Pitch .. "\n"
+							result = result .. indent .. varName .. ".Looped = " .. tostring(obj.Looped) .. "\n"
+						elseif obj:IsA("Camera") then
+							result = result .. indent .. varName .. ".FieldOfView = " .. obj.FieldOfView .. "\n"
+						elseif obj:IsA("GuiObject") then
+							result = result .. indent .. varName .. ".Position = UDim2.new(" .. obj.Position.X.Scale .. ", " .. obj.Position.X.Offset .. ", " .. obj.Position.Y.Scale .. ", " .. obj.Position.Y.Offset .. ")\n"
+							result = result .. indent .. varName .. ".Size = UDim2.new(" .. obj.Size.X.Scale .. ", " .. obj.Size.X.Offset .. ", " .. obj.Size.Y.Scale .. ", " .. obj.Size.Y.Offset .. ")\n"
+							result = result .. indent .. varName .. ".Visible = " .. tostring(obj.Visible) .. "\n"
+						end
+						
+						-- Set parent
+						if depth == 0 then
+							result = result .. indent .. varName .. ".Parent = workspace\n"
+						else
+							result = result .. indent .. varName .. ".Parent = " .. obj.Parent.Name:gsub("[^%W]", "_") .. "\n"
+						end
+						
+						result = result .. "\n"
+						
+						-- Export children
+						for _, child in pairs(obj:GetChildren()) do
+							result = result .. exportObject(child, depth + 1, false)
+						end
+						
+						return result
+					end
+					
+					-- Start export from workspace, marking selected objects
+					local selectedMap = {}
+					for _, node in ipairs(sList) do
+						selectedMap[node.Obj] = true
+					end
+					
+					exportString = exportString .. exportObject(workspace, 0, true)
+					
+					return exportString
+				end)
+				
+				if success and exportData then
+					updateProgress(1, 2, "Writing workspace file...")
+					local writeSuccess, writeResult = pcall(writefile, workspaceFilePath, exportData)
+					if writeSuccess then
+						print("Successfully exported workspace + selected objects: " .. workspaceFileName)
+					else
+						warn("Failed to write workspace file: " .. tostring(writeResult))
+					end
+				else
+					warn("Failed to export workspace: " .. tostring(exportData))
+				end
+			else
+				-- Export individual selected objects
+				updateProgress(0, #sList, "Preparing to export individual objects...")
+				
+				for i, node in ipairs(sList) do
+					local obj = node.Obj
+					if obj then
+						-- Skip if it's the game root
+						if obj == game then
+							warn("Cannot export game root directly")
+							continue
+						end
+						
+						updateProgress(i, #sList, string.format("Exporting: %s (%s)", obj.Name, obj.ClassName))
+						
+						-- Create filename based on object name and class
+						local fileName = obj.Name .. "_" .. obj.ClassName .. ".rbxlx"
+						local filePath = desktopPath .. "/" .. fileName
+						
+						-- Try to export the object
+						local success, exportData = pcall(function()
+							local exportString = "-- Exported from Dex\n"
+							exportString = exportString .. "-- Object: " .. obj.Name .. "\n"
+							exportString = exportString .. "-- Class: " .. obj.ClassName .. "\n"
+							exportString = exportString .. "-- Timestamp: " .. timestamp .. "\n"
+							exportString = exportString .. "-- Place ID: " .. game.PlaceId .. "\n"
+							exportString = exportString .. "-- Place Name: " .. game.Name .. "\n\n"
+							
+							-- Add basic object info
+							exportString = exportString .. "local obj = Instance.new(\"" .. obj.ClassName .. "\")\n"
+							exportString = exportString .. "obj.Name = \"" .. obj.Name .. "\"\n"
+							
+							-- Add position if it's a BasePart
+							if obj:IsA("BasePart") then
+								exportString = exportString .. "obj.Position = Vector3.new(" .. obj.Position.X .. ", " .. obj.Position.Y .. ", " .. obj.Position.Z .. ")\n"
+								exportString = exportString .. "obj.Size = Vector3.new(" .. obj.Size.X .. ", " .. obj.Size.Y .. ", " .. obj.Size.Z .. ")\n"
+								exportString = exportString .. "obj.Anchored = " .. tostring(obj.Anchored) .. "\n"
+								exportString = exportString .. "obj.CanCollide = " .. tostring(obj.CanCollide) .. "\n"
+								exportString = exportString .. "obj.Material = Enum.Material." .. tostring(obj.Material) .. "\n"
+								if obj:IsA("Part") then
+									exportString = exportString .. "obj.Shape = Enum.PartType." .. tostring(obj.Shape) .. "\n"
+								end
+							end
+							
+							-- Add color if it has one
+							if obj:IsA("BasePart") and obj.BrickColor then
+								exportString = exportString .. "obj.BrickColor = BrickColor.new(\"" .. tostring(obj.BrickColor) .. "\")\n"
+							end
+							
+							-- Add transparency if applicable
+							if obj:IsA("BasePart") then
+								exportString = exportString .. "obj.Transparency = " .. obj.Transparency .. "\n"
+							end
+							
+							-- Add additional properties for other object types
+							if obj:IsA("Model") then
+								if obj.PrimaryPart then
+									exportString = exportString .. "obj.PrimaryPart = obj -- Note: PrimaryPart reference not preserved\n"
+								end
+								if obj.WorldPivot then
+									local pivot = obj.WorldPivot
+									exportString = exportString .. "obj.WorldPivot = CFrame.new(" .. pivot.X .. ", " .. pivot.Y .. ", " .. pivot.Z .. ")\n"
+								end
+							elseif obj:IsA("Script") or obj:IsA("LocalScript") or obj:IsA("ModuleScript") then
+								if obj.Source then
+									exportString = exportString .. "obj.Source = [[" .. obj.Source .. "]]\n"
+								end
+								exportString = exportString .. "obj.Disabled = " .. tostring(obj.Disabled) .. "\n"
+							elseif obj:IsA("Light") then
+								exportString = exportString .. "obj.Brightness = " .. obj.Brightness .. "\n"
+								exportString = exportString .. "obj.Color = Color3.new(" .. obj.Color.R .. ", " .. obj.Color.G .. ", " .. obj.Color.B .. ")\n"
+								exportString = exportString .. "obj.Range = " .. obj.Range .. "\n"
+							elseif obj:IsA("Sound") then
+								exportString = exportString .. "obj.Volume = " .. obj.Volume .. "\n"
+								exportString = exportString .. "obj.Pitch = " .. obj.Pitch .. "\n"
+								exportString = exportString .. "obj.Looped = " .. tostring(obj.Looped) .. "\n"
+							elseif obj:IsA("Camera") then
+								exportString = exportString .. "obj.FieldOfView = " .. obj.FieldOfView .. "\n"
+							elseif obj:IsA("GuiObject") then
+								exportString = exportString .. "obj.Position = UDim2.new(" .. obj.Position.X.Scale .. ", " .. obj.Position.X.Offset .. ", " .. obj.Position.Y.Scale .. ", " .. obj.Position.Y.Offset .. ")\n"
+								exportString = exportString .. "obj.Size = UDim2.new(" .. obj.Size.X.Scale .. ", " .. obj.Size.X.Offset .. ", " .. obj.Size.Y.Scale .. ", " .. obj.Size.Y.Offset .. ")\n"
+								exportString = exportString .. "obj.Visible = " .. tostring(obj.Visible) .. "\n"
+							end
+							
+							-- Add parent info
+							if obj.Parent and obj.Parent ~= game then
+								exportString = exportString .. "obj.Parent = workspace -- Note: Parent relationship not preserved in export\n"
+							end
+							
+							return exportString
+						end)
+						
+						if success and exportData then
+							-- Write the file
+							updateProgress(i, #sList, "Writing file: " .. fileName)
+							local writeSuccess, writeResult = pcall(writefile, filePath, exportData)
+							if writeSuccess then
+								print("Successfully exported: " .. fileName)
+							else
+								warn("Failed to write file " .. fileName .. ": " .. tostring(writeResult))
+							end
+						else
+							warn("Failed to export object " .. obj.Name .. ": " .. tostring(exportData))
+						end
+						
+						-- Small delay to prevent overwhelming the system
+						task.wait(0.1)
+					end
+				end
+			end
+			
+			-- Create a summary file
+			updateProgress(workspaceSelected and 1 or #sList, workspaceSelected and 2 or #sList + 1, "Creating export summary...")
+			
+			local summaryFileName = "Export_Summary_" .. timestamp .. ".txt"
+			local summaryFilePath = desktopPath .. "/" .. summaryFileName
+			
+			local summaryContent = "Dex Export Summary\n"
+			summaryContent = summaryContent .. "================\n\n"
+			summaryContent = summaryContent .. "Timestamp: " .. timestamp .. "\n"
+			summaryContent = summaryContent .. "Place ID: " .. game.PlaceId .. "\n"
+			summaryContent = summaryContent .. "Place Name: " .. game.Name .. "\n"
+			summaryContent = summaryContent .. "Total Objects Selected: " .. #sList .. "\n\n"
+			
+			if workspaceSelected then
+				summaryContent = summaryContent .. "Workspace Export: YES\n"
+				if #sList == 1 then
+					summaryContent = summaryContent .. "Type: Complete Workspace Export\n"
+				else
+					summaryContent = summaryContent .. "Type: Workspace + Selected Objects\n"
+				end
+			else
+				summaryContent = summaryContent .. "Workspace Export: NO\n"
+				summaryContent = summaryContent .. "Type: Individual Object Export\n"
+			end
+			
+			summaryContent = summaryContent .. "\nExported Objects:\n"
+			for i, node in ipairs(sList) do
+				local obj = node.Obj
+				if obj then
+					summaryContent = summaryContent .. i .. ". " .. obj.Name .. " (" .. obj.ClassName .. ")\n"
+				end
+			end
+			
+			summaryContent = summaryContent .. "\nFiles Created:\n"
+			if workspaceSelected then
+				if #sList == 1 then
+					summaryContent = summaryContent .. "- Workspace_Complete_" .. timestamp .. ".rbxlx\n"
+				else
+					summaryContent = summaryContent .. "- Workspace_Plus_Selected_" .. timestamp .. ".rbxlx\n"
+				end
+			else
+				for i, node in ipairs(sList) do
+					local obj = node.Obj
+					if obj and obj ~= game then
+						summaryContent = summaryContent .. "- " .. obj.Name .. "_" .. obj.ClassName .. ".rbxlx\n"
+					end
+				end
+			end
+			summaryContent = summaryContent .. "- " .. summaryFileName .. "\n"
+			
+			-- Write summary file
+			updateProgress(workspaceSelected and 2 or #sList + 1, workspaceSelected and 2 or #sList + 1, "Writing summary file...")
+			local summarySuccess, summaryResult = pcall(writefile, summaryFilePath, summaryContent)
+			if summarySuccess then
+				print("Export summary created: " .. summaryFileName)
+			else
+				warn("Failed to create summary file: " .. tostring(summaryResult))
+			end
+			
+			-- Show completion message
+			print("Export completed! Check your Desktop/" .. folderName .. " folder for exported files.")
+			print("Total files created: " .. (workspaceSelected and 2 or #sList + 1))
+			
+			-- Update progress to 100% and close
+			updateProgress(workspaceSelected and 2 or #sList + 1, workspaceSelected and 2 or #sList + 1, "Export completed!")
+			task.wait(1) -- Show completion for 1 second
+			closeProgress()
 		end})
 		
 		--[[context:Register("VIEW_CONNECTIONS",{Name = "View Connections", OnClick = function()
